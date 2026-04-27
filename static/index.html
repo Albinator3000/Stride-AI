@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stride AI</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", "Monaco", monospace;
+      background: #0f0f0f;
+      color: #e8e8e8;
+      height: 100dvh;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+    }
+
+    aside {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid #1e1e1e;
+    }
+
+    /* ── Brand ── */
+    .brand {
+      padding: 18px 24px 14px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #00e676;
+      border-bottom: 1px solid #1e1e1e;
+      flex-shrink: 0;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid #1e1e1e;
+      flex-shrink: 0;
+    }
+    .tab {
+      padding: 10px 0;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      text-align: center;
+      color: #555;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab:hover { color: #aaa; }
+    .tab.active { color: #00e676; border-bottom-color: #00e676; }
+
+    /* ── Panels ── */
+    .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .panel.active { display: flex; }
+    .panel-scroll { flex: 1; overflow-y: auto; }
+
+    /* ── Form (Plan tab) ── */
+    form {
+      padding: 18px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-bottom: 1px solid #1e1e1e;
+      flex-shrink: 0;
+    }
+    label { font-size: 11px; color: #888; letter-spacing: 0.05em; text-transform: uppercase; }
+    input, select {
+      width: 100%;
+      padding: 9px 12px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #e8e8e8;
+      font-size: 14px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", "Monaco", monospace !important;
+      margin-top: 4px;
+    }
+    input:focus, select:focus { outline: none; border-color: #00e676; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ── Distance picker ── */
+    .dist-picker {
+      margin-top: 4px;
+      padding: 12px 0 0;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .dist-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 108px;
+      padding: 0 10px;
+      overflow: hidden;
+    }
+    .dist-bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      cursor: pointer;
+      gap: 3px;
+      position: relative;
+    }
+    .dist-bar {
+      width: 100%;
+      border-radius: 3px 3px 0 0;
+      background: #2e2e2e;
+      transition: background 0.15s;
+      min-height: 4px;
+    }
+    .dist-bar-col:hover .dist-bar { background: #00e676; }
+    .dist-bar-col.active .dist-bar { background: #00e676; }
+    .dist-bar-label {
+      font-size: 9px;
+      color: #555;
+      text-align: center;
+      white-space: nowrap;
+      padding: 5px 0 8px;
+      transition: color 0.12s;
+      line-height: 1;
+    }
+    .dist-bar-col:hover .dist-bar-label { color: #aaa; }
+    .dist-bar-col.active .dist-bar-label { color: #00e676; font-weight: 700; }
+    .dist-count-tag {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      font-weight: 700;
+      color: #00e676;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #dist-hover-info {
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #00e676;
+      opacity: 0;
+      transition: opacity 0.15s;
+      padding-bottom: 4px;
+    }
+    #dist-hover-info.visible { opacity: 1; }
+    #dist-hover-info .run-badge {
+      background: #001a0d;
+      border: 1px solid #00e676;
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+    }
+    .unit-btn {
+      padding: 3px 10px;
+      background: transparent;
+      border: none;
+      color: #555;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .unit-btn.active { background: #ff5c00; color: #fff; }
+    .unit-btn:not(.active):hover { color: #aaa; }
+
+    .rt-btn {
+      padding: 8px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #888;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .rt-btn:hover { border-color: #555; color: #ccc; }
+    .rt-btn.active { background: #001a0d; border-color: #00e676; color: #00e676; }
+
+    button[type="submit"] {
+      padding: 10px;
+      background: #00e676;
+      color: #0a0a0a;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button[type="submit"]:disabled { background: #003d1a; color: #888; cursor: not-allowed; }
+
+    /* ── Stats strip ── */
+    #stats {
+      display: none;
+      padding: 14px 24px;
+      gap: 16px;
+      border-bottom: 1px solid #1e1e1e;
+      flex-shrink: 0;
+    }
+    #stats.visible { display: flex; }
+    .stat { flex: 1; }
+    .stat-val { font-size: 20px; font-weight: 700; color: #00e676; }
+    .stat-label { font-size: 11px; color: #888; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ── Warning ── */
+    #warning {
+      display: none;
+      margin: 12px 24px 0;
+      padding: 10px 12px;
+      background: #001a0d;
+      border: 1px solid #00e676;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #69ffa8;
+      line-height: 1.5;
+      flex-shrink: 0;
+    }
+    #warning.visible { display: block; }
+
+    /* ── Directions ── */
+    #directions-wrap { padding: 16px 24px; }
+    #directions-wrap h3 { font-size: 11px; color: #888; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 10px; }
+    #directions { list-style: none; display: flex; flex-direction: column; gap: 5px; counter-reset: step; }
+    #directions li {
+      font-size: 13px;
+      padding: 8px 10px;
+      background: #1a1a1a;
+      border-radius: 6px;
+      line-height: 1.45;
+      counter-increment: step;
+    }
+    #directions li::before {
+      content: counter(step);
+      display: inline-block;
+      min-width: 18px;
+      margin-right: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #00e676;
+    }
+
+    /* ── GPX button ── */
+    #gpx-wrap { padding: 16px 24px; border-top: 1px solid #1e1e1e; display: none; flex-shrink: 0; }
+    #gpx-wrap.visible { display: block; }
+    #gpx-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #e8e8e8;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #gpx-btn:hover { border-color: #00e676; color: #00e676; }
+
+    /* ── Status / error ── */
+    #status { display: none; padding: 10px 24px; font-size: 12px; color: #888; flex-shrink: 0; }
+    #status.visible { display: block; }
+    #status.error { color: #ff4444; }
+
+    /* ── History tab ── */
+    .run-card {
+      padding: 14px 24px;
+      border-bottom: 1px solid #1a1a1a;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .run-card:hover { background: #161616; }
+    .run-card.active { background: #001a0d; border-left: 2px solid #00e676; }
+    .run-card-title { font-size: 13px; font-weight: 600; color: #e8e8e8; margin-bottom: 4px; }
+    .run-card-meta { font-size: 12px; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
+    .run-card-meta span { color: #00e676; }
+    .history-empty { padding: 32px 24px; font-size: 13px; color: #555; text-align: center; }
+    .history-gpx {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 11px;
+      color: #555;
+      text-decoration: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+    .history-gpx:hover { color: #00e676; border-color: #00e676; }
+
+    /* ── Analytics tab ── */
+    .analytics-section { padding: 18px 24px; border-bottom: 1px solid #1a1a1a; }
+    .analytics-section h3 { font-size: 11px; color: #888; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 14px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .kpi { background: #1a1a1a; border-radius: 8px; padding: 14px 12px; }
+    .kpi-val { font-size: 22px; font-weight: 700; color: #00e676; }
+    .kpi-label { font-size: 11px; color: #666; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .analytics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .analytics-table th { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.04em; padding: 0 0 8px; text-align: left; font-weight: 600; }
+    .analytics-table td { padding: 7px 0; border-top: 1px solid #1a1a1a; color: #ccc; }
+    .analytics-table td:last-child { text-align: right; color: #00e676; font-weight: 600; }
+    .week-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .week-bar { height: 6px; background: #00e676; border-radius: 3px; min-width: 2px; }
+    .analytics-empty { padding: 32px 24px; font-size: 13px; color: #555; text-align: center; }
+
+    /* ── Map ── */
+    #map { width: 100%; height: 100%; background: #1a1a1a; }
+  </style>
+</head>
+<body>
+
+<aside>
+  <div class="brand">STRIDE AI</div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="plan">Plan</div>
+    <div class="tab" data-tab="history">History</div>
+    <div class="tab" data-tab="analytics">Stats</div>
+  </div>
+
+  <!-- ── Plan panel ── -->
+  <div class="panel active" id="panel-plan">
+    <form id="route-form">
+      <div>
+        <label for="address">Start location</label>
+        <input id="address" type="text" placeholder="Central Park, New York" required />
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <label for="distance">Distance</label>
+          <div style="display:flex;gap:0;border:1px solid #2a2a2a;border-radius:5px;overflow:hidden;">
+            <button type="button" class="unit-btn active" data-unit="km">km</button>
+            <button type="button" class="unit-btn" data-unit="mi">mi</button>
+          </div>
+        </div>
+        <input id="distance" type="number" min="0.5" max="100" step="0.5" value="10" required />
+      </div>
+      <div>
+        <label>Route type</label>
+        <div class="route-type-row" style="margin-top:4px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <button type="button" class="rt-btn active" data-rt="out_and_back">Out &amp; Back</button>
+          <button type="button" class="rt-btn" data-rt="point_to_point">One Way</button>
+        </div>
+        <input type="hidden" id="route-type" value="out_and_back" />
+      </div>
+      <div>
+        <label for="seed">Direction</label>
+        <select id="seed">
+          <option value="1">North</option>
+          <option value="2">Northeast</option>
+          <option value="3">East</option>
+          <option value="4">Southeast</option>
+          <option value="5">South</option>
+          <option value="6">Southwest</option>
+          <option value="7">West</option>
+          <option value="8">Northwest</option>
+        </select>
+      </div>
+      <button type="submit" id="generate-btn">Generate Route</button>
+    </form>
+
+    <div id="stats">
+      <div class="stat"><div class="stat-val" id="stat-dist">—</div><div class="stat-label">Distance</div></div>
+      <div class="stat"><div class="stat-val" id="stat-elev">—</div><div class="stat-label">Elevation</div></div>
+      <div class="stat"><div class="stat-val" id="stat-novelty">—</div><div class="stat-label">New ground</div></div>
+    </div>
+
+    <div id="warning"></div>
+    <div id="status"></div>
+
+    <div class="panel-scroll">
+      <div id="directions-wrap" style="display:none">
+        <h3>Directions</h3>
+        <ol id="directions"></ol>
+      </div>
+    </div>
+
+    <div id="gpx-wrap">
+      <a id="gpx-btn">Download GPX</a>
+    </div>
+  </div>
+
+  <!-- ── History panel ── -->
+  <div class="panel" id="panel-history">
+    <div class="panel-scroll" id="history-list">
+      <div class="history-empty">No runs yet — plan your first route.</div>
+    </div>
+  </div>
+
+  <!-- ── Analytics panel ── -->
+  <div class="panel" id="panel-analytics">
+    <div class="panel-scroll">
+      <div class="analytics-section">
+        <h3>Distance breakdown</h3>
+        <div class="dist-picker" id="stats-dist-picker">
+          <div class="dist-chart" id="dist-chart"></div>
+          <div id="dist-hover-info"></div>
+        </div>
+      </div>
+
+      <div class="analytics-section" id="analytics-kpis">
+        <h3>All time</h3>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-val" id="kpi-runs">—</div><div class="kpi-label">Runs</div></div>
+          <div class="kpi"><div class="kpi-val" id="kpi-km">—</div><div class="kpi-label">Total km</div></div>
+          <div class="kpi"><div class="kpi-val" id="kpi-elev">—</div><div class="kpi-label">Avg elev</div></div>
+        </div>
+      </div>
+
+      <div class="analytics-section">
+        <h3>By week</h3>
+        <table class="analytics-table" id="week-table">
+          <thead><tr><th>Week</th><th>Runs</th><th style="text-align:right">km</th></tr></thead>
+          <tbody id="week-body"></tbody>
+        </table>
+      </div>
+
+      <div class="analytics-section">
+        <h3>Top locations</h3>
+        <table class="analytics-table" id="loc-table">
+          <thead><tr><th>Location</th><th style="text-align:right">km</th></tr></thead>
+          <tbody id="loc-body"></tbody>
+        </table>
+      </div>
+
+      <div class="analytics-section">
+        <h3>Distance mix</h3>
+        <table class="analytics-table" id="dist-table">
+          <thead><tr><th>Range</th><th style="text-align:right">Runs</th></tr></thead>
+          <tbody id="dist-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // ── Map ──────────────────────────────────────────────────────────────────
+  const map = L.map("map", { zoomControl: true }).setView([51.5, -0.1], 13);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "© OpenStreetMap contributors © CARTO",
+    maxZoom: 19,
+  }).addTo(map);
+
+  let routeLayer = null;
+  let markerLayer = null;
+
+  function drawRoute(coordinates) {
+    if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+    if (markerLayer) { map.removeLayer(markerLayer); markerLayer = null; }
+    const latlngs = coordinates.map(([lon, lat]) => [lat, lon]);
+    routeLayer = L.polyline(latlngs, { color: "#00e676", weight: 4, opacity: 0.9 }).addTo(map);
+    markerLayer = L.circleMarker(latlngs[0], {
+      radius: 8, color: "#00e676", fillColor: "#fff", fillOpacity: 1, weight: 2,
+    }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+  }
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
+      if (tab.dataset.tab === "history") loadHistory();
+      if (tab.dataset.tab === "analytics") loadAnalytics();
+    });
+  });
+
+  // ── Distance picker ──────────────────────────────────────────────────────
+  const DISTANCES = [
+    { label: "400m",   km: 0.4 },
+    { label: "1K",     km: 1 },
+    { label: "1 mi",   km: 1.609 },
+    { label: "2K",     km: 2 },
+    { label: "2 mi",   km: 3.219 },
+    { label: "5K",     km: 5 },
+    { label: "10K",    km: 10 },
+    { label: "15K",    km: 15 },
+    { label: "10 mi",  km: 16.093 },
+    { label: "20K",    km: 20 },
+    { label: "½ Mar",  km: 21.0975 },
+    { label: "25K",    km: 25 },
+    { label: "30K",    km: 30 },
+    { label: "Mar",    km: 42.195 },
+  ];
+
+  // Chart height is 108px. Layout from bottom: label(22px) + bar(≤52px) + gap(15px) + count(12px) = 101px ≤ 108px ✓
+  const MAX_HEIGHT = 52;
+  const MIN_HEIGHT = 4;
+
+  function nearestPresetIdx(km) {
+    let best = 0, bestDelta = Infinity;
+    DISTANCES.forEach((d, i) => {
+      const delta = Math.abs(d.km - km);
+      if (delta < bestDelta) { bestDelta = delta; best = i; }
+    });
+    return best;
+  }
+
+  function buildDistChart(presetCounts) {
+    const chart = document.getElementById("dist-chart");
+    if (!chart) return;
+    chart.innerHTML = "";
+    const info = document.getElementById("dist-hover-info");
+    const maxCount = Math.max(...presetCounts, 1);
+
+    DISTANCES.forEach((d, i) => {
+      const count = presetCounts[i];
+      const h = count > 0
+        ? Math.max(Math.round((count / maxCount) * MAX_HEIGHT), MIN_HEIGHT + 4)
+        : MIN_HEIGHT;
+
+      const col = document.createElement("div");
+      col.className = "dist-bar-col";
+      col.innerHTML = `<div class="dist-bar" style="height:${h}px"></div><div class="dist-bar-label">${d.label}</div>`;
+
+      if (count > 0) {
+        const tag = document.createElement("div");
+        tag.className = "dist-count-tag";
+        tag.textContent = count;
+        // 22px = dist-bar-label height, 15px = gap above bar top
+        tag.style.bottom = `${h + 22 + 15}px`;
+        col.appendChild(tag);
+      }
+
+      if (info) {
+        col.addEventListener("mouseenter", () => {
+          const runStr = count === 1 ? "1 run" : `${count} runs`;
+          info.innerHTML = `<span>${d.label} &mdash; ${d.km} km</span><span class="run-badge">${runStr}</span>`;
+          info.classList.add("visible");
+        });
+        col.addEventListener("mouseleave", () => {
+          info.classList.remove("visible");
+        });
+      }
+
+      chart.appendChild(col);
+    });
+  }
+
+  // Initialise with flat bars; refreshed when analytics loads
+  buildDistChart(DISTANCES.map(() => 0));
+
+  // ── Unit toggle (km / mi) ────────────────────────────────────────────────
+  let distUnit = "km";
+  const MI_TO_KM = 1.60934;
+
+  document.querySelectorAll(".unit-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.unit === distUnit) return;
+      document.querySelectorAll(".unit-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const input = document.getElementById("distance");
+      const val = parseFloat(input.value) || 0;
+      if (btn.dataset.unit === "mi") {
+        input.value = Math.round((val / MI_TO_KM) * 10) / 10;
+        input.step = "0.1";
+        input.max = "62";
+      } else {
+        input.value = Math.round(val * MI_TO_KM * 10) / 10;
+        input.step = "0.5";
+        input.max = "100";
+      }
+      distUnit = btn.dataset.unit;
+    });
+  });
+
+  // ── Route type toggle ────────────────────────────────────────────────────
+  document.querySelectorAll(".rt-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".rt-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("route-type").value = btn.dataset.rt;
+    });
+  });
+
+  // ── Plan tab ─────────────────────────────────────────────────────────────
+  function setStatus(msg, isError = false) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "visible" + (isError ? " error" : "");
+  }
+  function clearStatus() {
+    const el = document.getElementById("status");
+    el.className = "";
+    el.textContent = "";
+  }
+
+  document.getElementById("route-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("generate-btn");
+    btn.disabled = true;
+    btn.textContent = "Generating…";
+    clearStatus();
+
+    document.getElementById("stats").classList.remove("visible");
+    document.getElementById("warning").classList.remove("visible");
+    document.getElementById("directions-wrap").style.display = "none";
+    document.getElementById("gpx-wrap").classList.remove("visible");
+
+    const rawDist = parseFloat(document.getElementById("distance").value);
+    const distKm = distUnit === "mi" ? rawDist * MI_TO_KM : rawDist;
+    const body = {
+      address: document.getElementById("address").value.trim(),
+      distance_km: Math.round(distKm * 100) / 100,
+      seed: parseInt(document.getElementById("seed").value),
+      route_type: document.getElementById("route-type").value,
+    };
+
+    try {
+      const res = await fetch("/routes/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Server error");
+      }
+      const data = await res.json();
+
+      drawRoute(data.coordinates);
+
+      const displayDist = distUnit === "mi"
+        ? (data.distance_km / MI_TO_KM).toFixed(2) + " mi"
+        : data.distance_km.toFixed(2) + " km";
+      document.getElementById("stat-dist").textContent = displayDist;
+      document.getElementById("stat-elev").textContent = data.elevation_gain_m.toFixed(0) + " m";
+      document.getElementById("stat-novelty").textContent = data.novelty_score + "%";
+      document.getElementById("stats").classList.add("visible");
+
+      if (data.distance_warning) {
+        const w = document.getElementById("warning");
+        w.textContent = data.distance_warning;
+        w.classList.add("visible");
+      }
+
+      const ol = document.getElementById("directions");
+      ol.innerHTML = "";
+      data.steps.forEach(step => {
+        const li = document.createElement("li");
+        li.textContent = step;
+        ol.appendChild(li);
+      });
+      document.getElementById("directions-wrap").style.display = "block";
+
+      const title = encodeURIComponent(`${body.address} ${body.distance_km}km`);
+      document.getElementById("gpx-btn").href = `/routes/${data.route_id}/gpx?title=${title}`;
+      document.getElementById("gpx-wrap").classList.add("visible");
+
+
+    } catch (err) {
+      setStatus(err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Generate Route";
+    }
+  });
+
+  // ── History tab ──────────────────────────────────────────────────────────
+  let historyLoaded = false;
+
+  async function loadHistory() {
+    if (historyLoaded) return;
+    historyLoaded = false; // always refresh
+    const container = document.getElementById("history-list");
+    container.innerHTML = '<div class="history-empty">Loading…</div>';
+
+    try {
+      const res = await fetch("/runs?limit=50");
+      const runs = await res.json();
+
+      if (!runs.length) {
+        container.innerHTML = '<div class="history-empty">No runs yet — plan your first route.</div>';
+        return;
+      }
+
+      container.innerHTML = "";
+      runs.forEach(run => {
+        const card = document.createElement("div");
+        card.className = "run-card";
+        const date = new Date(run.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const gpxTitle = encodeURIComponent(run.title);
+        card.innerHTML = `
+          <div class="run-card-title">${run.title}</div>
+          <div class="run-card-meta">
+            <span>${run.actual_km.toFixed(2)} km</span>
+            <span>${run.elevation_m.toFixed(0)} m gain</span>
+            <span style="color:#555">${date}</span>
+          </div>
+          ${run.route_id ? `<a class="history-gpx" href="/routes/${run.route_id}/gpx?title=${gpxTitle}" onclick="event.stopPropagation()">Export GPX</a>` : ""}
+        `;
+        if (run.route_id) {
+          card.addEventListener("click", async () => {
+            document.querySelectorAll(".run-card").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+            try {
+              const r = await fetch(`/routes/${run.route_id}`);
+              const data = await r.json();
+              drawRoute(data.coordinates);
+            } catch {
+              // silently ignore map reload failures
+            }
+          });
+        }
+        container.appendChild(card);
+      });
+    } catch {
+      container.innerHTML = '<div class="history-empty">Failed to load history.</div>';
+    }
+  }
+
+  // ── Analytics tab ────────────────────────────────────────────────────────
+  async function loadAnalytics() {
+    try {
+      const res = await fetch("/runs/analytics");
+      const data = await res.json();
+      const t = data.totals;
+
+      document.getElementById("kpi-runs").textContent = t.total_runs;
+      document.getElementById("kpi-km").textContent = t.total_km.toFixed(1);
+      document.getElementById("kpi-elev").textContent = t.avg_elevation_m.toFixed(0) + " m";
+
+      // Weekly
+      const weekBody = document.getElementById("week-body");
+      weekBody.innerHTML = "";
+      const maxKm = Math.max(...data.by_week.map(w => w.total_km), 1);
+      data.by_week.forEach(w => {
+        const barW = Math.round((w.total_km / maxKm) * 80);
+        weekBody.innerHTML += `
+          <tr>
+            <td>${w.week}</td>
+            <td>${w.runs}</td>
+            <td>
+              <div class="week-bar-wrap">
+                <div class="week-bar" style="width:${barW}px"></div>
+                <span style="color:#00e676;font-weight:600">${w.total_km.toFixed(1)}</span>
+              </div>
+            </td>
+          </tr>`;
+      });
+
+      // Top locations
+      const locBody = document.getElementById("loc-body");
+      locBody.innerHTML = "";
+      data.top_locations.forEach(l => {
+        locBody.innerHTML += `<tr><td>${l.start_location}</td><td>${l.total_km.toFixed(1)}</td></tr>`;
+      });
+
+      // Distance distribution table
+      const distBody = document.getElementById("dist-body");
+      distBody.innerHTML = "";
+      data.distance_distribution.forEach(d => {
+        distBody.innerHTML += `<tr><td>${d.bucket}</td><td>${d.count}</td></tr>`;
+      });
+
+      // Distance bar chart
+      const counts = DISTANCES.map(() => 0);
+      (data.by_requested_km || []).forEach(row => {
+        counts[nearestPresetIdx(row.requested_km)] += row.count;
+      });
+      buildDistChart(counts);
+
+    } catch {
+      // silently fail — analytics is non-critical
+    }
+  }
+</script>
+<style>
+  input, select, textarea, button {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", "Monaco", monospace !important;
+  }
+</style>
+</body>
+</html>
